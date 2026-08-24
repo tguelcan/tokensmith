@@ -72,6 +72,8 @@ vi.mock("@metaplex-foundation/umi-bundle-defaults", () => ({
 vi.mock("@metaplex-foundation/umi", () => ({
   keypairIdentity: vi.fn(),
   percentAmount: vi.fn(() => 0),
+  publicKey: vi.fn((value: string) => value),
+  some: vi.fn((value: unknown) => value),
   generateSigner: vi.fn(() => ({
     publicKey: { toString: () => "MockMintAddress123" },
   })),
@@ -92,8 +94,10 @@ vi.mock("@metaplex-foundation/mpl-toolbox", () => ({
 
 vi.mock("@metaplex-foundation/mpl-token-metadata", () => ({
   createAndMint: vi.fn(),
+  fetchMetadata: vi.fn(),
   findMetadataPda: vi.fn(() => ["MockMetadata789", 255]),
   mplTokenMetadata: vi.fn(),
+  updateV1: vi.fn(),
   TokenStandard: { Fungible: "Fungible" },
 }));
 
@@ -256,5 +260,115 @@ describe("createTokenWithSupply", () => {
     const { mint } = vi.mocked(createAndMint).mock.calls[0]![1];
     expect(mint).toBe(vi.mocked(generateSigner).mock.results[0]?.value);
     expect(typeof mint).toBe("object");
+  });
+});
+
+describe("updateTokenMetadata", () => {
+  const IDENTITY = "mock-identity-public-key";
+  const MINT = "MockMintAddress123";
+
+  /** Puts an existing token on chain, owned by the payer unless overridden. */
+  async function mockExistingToken(
+    overrides: { isMutable?: boolean; updateAuthority?: string } = {},
+  ) {
+    const { createUmi } = await import(
+      "@metaplex-foundation/umi-bundle-defaults"
+    );
+    const { fetchMetadata, updateV1 } = await import(
+      "@metaplex-foundation/mpl-token-metadata"
+    );
+
+    vi.mocked(createUmi).mockReturnValue(mockUmi() as never);
+    vi.mocked(fetchMetadata).mockResolvedValue({
+      name: "Old Name",
+      symbol: "OLD",
+      uri: "https://example.com/old.json",
+      sellerFeeBasisPoints: 0,
+      creators: [],
+      isMutable: overrides.isMutable ?? true,
+      updateAuthority: overrides.updateAuthority ?? IDENTITY,
+    } as never);
+    vi.mocked(updateV1).mockReturnValue({
+      sendAndConfirm: vi
+        .fn()
+        .mockResolvedValue({ signature: new Uint8Array(64) }),
+    } as never);
+
+    return updateV1;
+  }
+
+  it("changes only the provided fields and keeps the rest", async () => {
+    const updateV1 = await mockExistingToken();
+    const { updateTokenMetadata } = await importService();
+
+    const result = await updateTokenMetadata(Keypair.generate(), MINT, {
+      name: "New Name",
+    });
+
+    expect(result).toEqual({
+      mintAddress: MINT,
+      name: "New Name",
+      symbol: "OLD",
+      uri: "https://example.com/old.json",
+      transactionSignature: "mock-tx-signature",
+      explorerUrl: `https://explorer.solana.com/address/${MINT}?cluster=devnet`,
+    });
+    expect(vi.mocked(updateV1).mock.calls[0]?.[1]).toMatchObject({
+      data: { name: "New Name", symbol: "OLD" },
+    });
+  });
+
+  it("refuses a frozen token without sending a transaction", async () => {
+    const updateV1 = await mockExistingToken({ isMutable: false });
+    const { updateTokenMetadata, TokenUpdateError } = await importService();
+
+    const failure = await updateTokenMetadata(Keypair.generate(), MINT, {
+      name: "New Name",
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(TokenUpdateError);
+    expect((failure as InstanceType<typeof TokenUpdateError>).reason).toBe(
+      "immutable",
+    );
+    expect(updateV1).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the payer is not the update authority", async () => {
+    const updateV1 = await mockExistingToken({
+      updateAuthority: "someone-else",
+    });
+    const { updateTokenMetadata, TokenUpdateError } = await importService();
+
+    const failure = await updateTokenMetadata(Keypair.generate(), MINT, {
+      symbol: "NEW",
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(TokenUpdateError);
+    expect((failure as InstanceType<typeof TokenUpdateError>).reason).toBe(
+      "wrong-authority",
+    );
+    expect(updateV1).not.toHaveBeenCalled();
+  });
+
+  it("reports a missing token as not-found", async () => {
+    const { createUmi } = await import(
+      "@metaplex-foundation/umi-bundle-defaults"
+    );
+    const { fetchMetadata } = await import(
+      "@metaplex-foundation/mpl-token-metadata"
+    );
+    vi.mocked(createUmi).mockReturnValue(mockUmi() as never);
+    vi.mocked(fetchMetadata).mockRejectedValue(new Error("Account not found"));
+
+    const { updateTokenMetadata, TokenUpdateError } = await importService();
+
+    const failure = await updateTokenMetadata(Keypair.generate(), MINT, {
+      name: "New Name",
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(TokenUpdateError);
+    expect((failure as InstanceType<typeof TokenUpdateError>).reason).toBe(
+      "not-found",
+    );
   });
 });

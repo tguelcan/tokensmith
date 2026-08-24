@@ -98,11 +98,19 @@ For production, prefer permanent storage ([Arweave](https://arweave.org), [IPFS]
 
 **Swapping the logo or description costs nothing and needs no transaction.** The on-chain record only stores the _URL_. Update the JSON (or the image it points to) at the same URL and wallets pick it up on their next refresh — caching means this can take minutes to hours.
 
-**Changing `name`, `symbol` or the `uri` itself requires an on-chain update:**
+**Changing `name`, `symbol` or the `uri` itself requires an on-chain update.** Either over the API:
 
 ```bash
-bun run update <MINT_ADDRESS> --name "New Name" --symbol NEW
-bun run verify <MINT_ADDRESS>          # confirm what is actually on-chain
+curl -X PATCH http://localhost:3000/token/<MINT> \
+  -H "X-API-Key: dev-api-key-12345" -H "Content-Type: application/json" \
+  -d '{"name": "New Name"}'
+```
+
+or from the shell, without a running server:
+
+```bash
+bun run update <MINT> --name "New Name" --symbol NEW
+bun run verify <MINT>          # confirm what is actually on-chain
 ```
 
 Two conditions must hold:
@@ -110,7 +118,7 @@ Two conditions must hold:
 - The token was created with `isMutable: true` (the default here)
 - Your `SOLANA_SECRET_KEY` is the update authority — the wallet that created it
 
-The script checks both before sending anything and refuses with a clear message otherwise.
+Both paths check this before sending anything and refuse with a clear reason otherwise.
 
 > Set `isMutable: false` and the on-chain fields are frozen **permanently**. That is a feature — it is what lets holders trust that a token cannot be renamed after the fact — but it is irreversible.
 
@@ -170,6 +178,29 @@ Creates the mint, attaches metadata, creates the associated token account and mi
 | `401`  | No API key provided                                          |
 | `403`  | API key invalid                                              |
 | `500`  | Creation failed; `error` explains why                        |
+
+### `PATCH /token/:mint`
+
+Changes the on-chain `name`, `symbol` or `uri` of an existing token. Send only the fields you want to change; the rest stay as they are.
+
+```bash
+curl -X PATCH http://localhost:3000/token/<MINT_ADDRESS> \
+  -H "X-API-Key: dev-api-key-12345" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "New Name", "symbol": "NEW"}'
+```
+
+| Status | Meaning                                                            |
+| ------ | ------------------------------------------------------------------ |
+| `200`  | Updated; body contains the new values and the transaction signature |
+| `400`  | Body is not JSON, empty, or a field is not a non-empty string       |
+| `401`  | No API key provided                                                 |
+| `403`  | API key invalid, or the wallet is not the token's update authority  |
+| `404`  | No Metaplex metadata exists for that mint                           |
+| `409`  | Token was created with `isMutable: false` — permanently frozen      |
+| `500`  | Update failed; `error` explains why                                 |
+
+> Changing the **logo or description** needs no request at all — those live in the JSON behind `uri`. See [Give your token a name and logo](#give-your-token-a-name-and-logo).
 
 ---
 

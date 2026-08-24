@@ -1,14 +1,10 @@
-import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import {
-  fetchMetadata,
-  findMetadataPda,
-  mplTokenMetadata,
-  updateV1,
-} from "@metaplex-foundation/mpl-token-metadata";
-import { keypairIdentity, publicKey, some } from "@metaplex-foundation/umi";
-import { clusterApiUrl } from "@solana/web3.js";
+  TokenUpdateError,
+  loadPayer,
+  updateTokenMetadata,
+  type MetadataChanges,
+} from "../src/services/solana.ts";
 import { config } from "../src/config.ts";
-import { loadPayer } from "../src/services/solana.ts";
 
 const [mintAddress, ...rest] = process.argv.slice(2);
 
@@ -24,7 +20,7 @@ URI needs no transaction at all.`);
   process.exit(1);
 }
 
-const flags = new Map<string, string>();
+const changes: MetadataChanges = {};
 for (let i = 0; i < rest.length; i += 2) {
   const key = rest[i];
   const value = rest[i + 1];
@@ -32,17 +28,21 @@ for (let i = 0; i < rest.length; i += 2) {
     console.error(`Malformed option near "${key}"`);
     process.exit(1);
   }
-  flags.set(key.slice(2), value);
+  const field = key.slice(2);
+  if (field !== "name" && field !== "symbol" && field !== "uri") {
+    console.error(`Unknown option "--${field}"`);
+    process.exit(1);
+  }
+  changes[field] = value;
 }
 
-if (flags.size === 0) {
+if (Object.keys(changes).length === 0) {
   console.error(
     "Nothing to change — pass at least one of --name, --symbol, --uri.",
   );
   process.exit(1);
 }
 
-const payer = loadPayer();
 if (!config.wallet.secretKeyBase64) {
   console.error(
     "No SOLANA_SECRET_KEY configured. Only the wallet that created the token can update it.",
@@ -50,55 +50,23 @@ if (!config.wallet.secretKeyBase64) {
   process.exit(1);
 }
 
-const endpoint = config.solana.rpcUrl ?? clusterApiUrl(config.solana.network);
-const umi = createUmi(endpoint).use(mplTokenMetadata());
-umi.use(keypairIdentity(umi.eddsa.createKeypairFromSecretKey(payer.secretKey)));
+try {
+  const updated = await updateTokenMetadata(loadPayer(), mintAddress, changes);
 
-const mint = publicKey(mintAddress);
-const [metadataPda] = findMetadataPda(umi, { mint });
-const current = await fetchMetadata(umi, metadataPda);
-
-if (!current.isMutable) {
-  console.error(
-    "This token was created with isMutable: false — its metadata is frozen permanently.",
-  );
-  process.exit(1);
-}
-
-if (current.updateAuthority !== umi.identity.publicKey) {
-  console.error(
-    `Update authority mismatch.\n  token expects : ${current.updateAuthority}\n  wallet is     : ${umi.identity.publicKey}`,
-  );
-  process.exit(1);
-}
-
-const next = {
-  name: flags.get("name") ?? current.name,
-  symbol: flags.get("symbol") ?? current.symbol,
-  uri: flags.get("uri") ?? current.uri,
-  sellerFeeBasisPoints: current.sellerFeeBasisPoints,
-  creators: current.creators,
-};
-
-console.log("Updating on-chain metadata");
-for (const field of ["name", "symbol", "uri"] as const) {
-  const marker = current[field] === next[field] ? " " : "*";
+  console.log("Updated on-chain metadata");
+  console.log("  name  :", updated.name);
+  console.log("  symbol:", updated.symbol);
+  console.log("  uri   :", updated.uri);
   console.log(
-    ` ${marker} ${field.padEnd(7)}: ${current[field]} -> ${next[field]}`,
+    `\nDone. Wallets may cache the old values for a while.\n${updated.explorerUrl}`,
   );
+} catch (error) {
+  console.error(
+    error instanceof TokenUpdateError
+      ? `Refused (${error.reason}): ${error.message}`
+      : error instanceof Error
+        ? error.message
+        : error,
+  );
+  process.exit(1);
 }
-
-await updateV1(umi, {
-  mint,
-  authority: umi.identity,
-  data: some(next),
-}).sendAndConfirm(umi);
-
-const explorer = `https://explorer.solana.com/address/${mintAddress}${
-  config.solana.network === "mainnet-beta"
-    ? ""
-    : `?cluster=${config.solana.network}`
-}`;
-console.log(
-  `\nDone. Wallets may cache the old values for a while.\n${explorer}`,
-);

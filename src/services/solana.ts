@@ -2,15 +2,19 @@ import { Connection, Keypair, clusterApiUrl, PublicKey } from "@solana/web3.js";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import {
   createAndMint,
+  fetchMetadata,
   findMetadataPda,
   mplTokenMetadata,
   TokenStandard,
+  updateV1,
 } from "@metaplex-foundation/mpl-token-metadata";
 import { findAssociatedTokenPda } from "@metaplex-foundation/mpl-toolbox";
 import {
   generateSigner,
   keypairIdentity,
   percentAmount,
+  publicKey,
+  some,
 } from "@metaplex-foundation/umi";
 import { base58 } from "@metaplex-foundation/umi/serializers";
 import { irysUploader } from "@metaplex-foundation/umi-uploader-irys";
@@ -38,6 +42,47 @@ export interface CreatedToken {
   initialSupply: string;
   transactionSignature: string;
   explorerUrl: string;
+}
+
+/**
+ * On-chain fields that can be changed after creation.
+ * The image and description live in the JSON behind `uri` and need no transaction.
+ */
+export interface MetadataChanges {
+  name?: string;
+  symbol?: string;
+  uri?: string;
+}
+
+export interface UpdatedToken {
+  mintAddress: string;
+  name: string;
+  symbol: string;
+  uri: string;
+  transactionSignature: string;
+  explorerUrl: string;
+}
+
+export type UpdateFailure = "not-found" | "immutable" | "wrong-authority";
+
+/** Carries why an update was refused so callers can map it to a status code. */
+export class TokenUpdateError extends Error {
+  constructor(
+    readonly reason: UpdateFailure,
+    message: string,
+  ) {
+    super(message);
+    this.name = "TokenUpdateError";
+  }
+}
+
+/** Explorer omits the cluster query only on mainnet. */
+export function explorerUrl(address: string): string {
+  const suffix =
+    config.solana.network === "mainnet-beta"
+      ? ""
+      : `?cluster=${config.solana.network}`;
+  return `https://explorer.solana.com/address/${address}${suffix}`;
 }
 
 /**
@@ -167,6 +212,70 @@ export async function createTokenWithSupply(
     symbol: config.token.symbol,
     initialSupply: config.token.initialSupplyHumanReadable,
     transactionSignature,
-    explorerUrl: `https://explorer.solana.com/address/${mintAddress}?cluster=${config.solana.network}`,
+    explorerUrl: explorerUrl(mintAddress),
+  };
+}
+
+/**
+ * Changes the on-chain name, symbol or URI of an existing token.
+ * Refuses before sending when the metadata is frozen or the payer is not the
+ * update authority, so the caller gets a clear reason instead of a program error.
+ */
+export async function updateTokenMetadata(
+  payer: Keypair,
+  mintAddress: string,
+  changes: MetadataChanges,
+): Promise<UpdatedToken> {
+  const umi = createUmiFor(payer);
+  const mint = publicKey(mintAddress);
+  const [metadataPda] = findMetadataPda(umi, { mint });
+
+  let current: Awaited<ReturnType<typeof fetchMetadata>>;
+  try {
+    current = await fetchMetadata(umi, metadataPda);
+  } catch {
+    throw new TokenUpdateError(
+      "not-found",
+      `No Metaplex metadata found for mint ${mintAddress}.`,
+    );
+  }
+
+  if (!current.isMutable) {
+    throw new TokenUpdateError(
+      "immutable",
+      "This token was created with isMutable: false — its metadata is frozen permanently.",
+    );
+  }
+
+  if (current.updateAuthority !== umi.identity.publicKey) {
+    throw new TokenUpdateError(
+      "wrong-authority",
+      `Update authority mismatch: token expects ${current.updateAuthority}, wallet is ${umi.identity.publicKey}.`,
+    );
+  }
+
+  const next = {
+    name: changes.name ?? current.name,
+    symbol: changes.symbol ?? current.symbol,
+    uri: changes.uri ?? current.uri,
+    sellerFeeBasisPoints: current.sellerFeeBasisPoints,
+    creators: current.creators,
+  };
+
+  const { signature } = await updateV1(umi, {
+    mint,
+    authority: umi.identity,
+    data: some(next),
+  }).sendAndConfirm(umi);
+
+  const [transactionSignature] = base58.deserialize(signature);
+
+  return {
+    mintAddress,
+    name: next.name,
+    symbol: next.symbol,
+    uri: next.uri,
+    transactionSignature,
+    explorerUrl: explorerUrl(mintAddress),
   };
 }
