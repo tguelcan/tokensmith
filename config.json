@@ -1,0 +1,25 @@
+{
+  "server": {
+    "port": 3000,
+    "apiKey": "dev-api-key-12345"
+  },
+  "solana": {
+    "network": "devnet",
+    "commitment": "confirmed",
+    "rpcUrl": null
+  },
+  "token": {
+    "name": "TokenSmith Demo",
+    "symbol": "SMITH",
+    "decimals": 9,
+    "initialSupply": 1000000,
+    "metadataUri": "https://raw.githubusercontent.com/tguelcan/tokensmith/main/metadata/demo-token.json",
+    "isMutable": true,
+    "creatorShare": 100
+  },
+  "wallet": {
+    "minBalanceSol": 0.5,
+    "airdropAmountSol": 1,
+    "secretKeyEnv": "SOLANA_SECRET_KEY"
+  }
+}

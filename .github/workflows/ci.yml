@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      - name: Run tests
+        run: bun run test
+
+  metadata:
+    name: Validate token metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The metadata JSON is served to wallets verbatim — a syntax error there
+      # breaks the token logo without breaking any test.
+      - name: Validate metadata JSON
+        run: |
+          for file in metadata/*.json config.json; do
+            echo "Checking $file"
+            jq empty "$file"
+          done
+
+      - name: Ensure the demo icon exists and is a PNG
+        run: file metadata/demo-token.png | grep -q 'PNG image data'

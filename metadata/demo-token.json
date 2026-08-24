@@ -1,0 +1,26 @@
+{
+  "name": "TokenSmith Demo",
+  "symbol": "SMITH",
+  "description": "Demo token minted by TokenSmith — a self-hostable API for creating SPL tokens with Metaplex metadata on Solana.",
+  "image": "https://raw.githubusercontent.com/tguelcan/tokensmith/main/metadata/demo-token.png",
+  "external_url": "https://github.com/tguelcan/tokensmith",
+  "attributes": [
+    {
+      "trait_type": "Network",
+      "value": "Devnet"
+    },
+    {
+      "trait_type": "Standard",
+      "value": "Fungible"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://raw.githubusercontent.com/tguelcan/tokensmith/main/metadata/demo-token.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

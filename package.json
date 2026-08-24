@@ -1,0 +1,59 @@
+{
+  "name": "tokensmith",
+  "version": "0.1.0",
+  "description": "Self-hostable API for minting SPL tokens with Metaplex metadata on Solana — name, symbol and logo in a single atomic transaction.",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "Tayfun Gülcan",
+  "homepage": "https://github.com/tguelcan/tokensmith#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tguelcan/tokensmith.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tguelcan/tokensmith/issues"
+  },
+  "keywords": [
+    "solana",
+    "spl-token",
+    "metaplex",
+    "token-metadata",
+    "mint",
+    "web3",
+    "blockchain",
+    "hono",
+    "bun",
+    "api",
+    "devnet",
+    "self-hosted"
+  ],
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "wallet": "bun run scripts/create-wallet.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "vitest": "^4.1.11"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
+    "@metaplex-foundation/mpl-toolbox": "^0.11.4",
+    "@metaplex-foundation/umi": "^1.5.1",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.5.1",
+    "@metaplex-foundation/umi-uploader-irys": "^1.5.0",
+    "@solana/web3.js": "^1.98.4",
+    "hono": "^4.13.3"
+  }
+}
