@@ -98,14 +98,21 @@ For production, prefer permanent storage ([Arweave](https://arweave.org), [IPFS]
 
 **Swapping the logo or description costs nothing and needs no transaction.** The on-chain record only stores the _URL_. Update the JSON (or the image it points to) at the same URL and wallets pick it up on their next refresh — caching means this can take minutes to hours.
 
-**Changing `name`, `symbol` or the `uri` itself requires an on-chain update** via the Metaplex `updateV1` instruction. Two conditions must hold:
+**Changing `name`, `symbol` or the `uri` itself requires an on-chain update:**
+
+```bash
+bun run update <MINT_ADDRESS> --name "New Name" --symbol NEW
+bun run verify <MINT_ADDRESS>          # confirm what is actually on-chain
+```
+
+Two conditions must hold:
 
 - The token was created with `isMutable: true` (the default here)
-- You hold the update authority — the payer wallet that created it
+- Your `SOLANA_SECRET_KEY` is the update authority — the wallet that created it
+
+The script checks both before sending anything and refuses with a clear message otherwise.
 
 > Set `isMutable: false` and the on-chain fields are frozen **permanently**. That is a feature — it is what lets holders trust that a token cannot be renamed after the fact — but it is irreversible.
-
-TokenSmith does not expose an update endpoint yet; only creation is implemented. Contributions welcome.
 
 ---
 
@@ -227,6 +234,10 @@ bun run dev         # watch mode
 bun run test        # run tests once
 bun run test:watch  # watch mode
 bunx tsc --noEmit   # typecheck
+
+bun run wallet                  # create a reusable payer wallet
+bun run verify <MINT>           # inspect on-chain metadata and its image chain
+bun run update <MINT> --name X  # change on-chain name, symbol or uri
 ```
 
 All blockchain calls are mocked, so the suite runs offline in well under a second. CI runs tests, typecheck and metadata validation on every push and PR.
@@ -236,6 +247,8 @@ config.json           # defaults for server, Solana, token, wallet
 metadata/             # off-chain token metadata + demo icon
 scripts/
   create-wallet.ts    # generates a reusable payer wallet into .env
+  verify-token.ts     # checks on-chain metadata, JSON and image reachability
+  update-metadata.ts  # updates on-chain name, symbol or uri
 src/
   index.ts            # entry point, mounts routes
   config.ts           # typed config loader (config.json + env)

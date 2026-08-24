@@ -36,6 +36,8 @@
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "wallet": "bun run scripts/create-wallet.ts",
+    "verify": "bun run scripts/verify-token.ts",
+    "update": "bun run scripts/update-metadata.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
